@@ -27,7 +27,9 @@ import org.elasticsearch.xpack.core.ml.action.CreateTrainedModelAssignmentAction
 import org.elasticsearch.xpack.ml.inference.assignment.TrainedModelAssignmentClusterService;
 import org.elasticsearch.xpack.ml.inference.assignment.TrainedModelAssignmentNodeService;
 import org.elasticsearch.xpack.ml.inference.assignment.TrainedModelAssignmentService;
-import org.elasticsearch.xpack.ml.inference.deployment.DeploymentManager;
+import org.elasticsearch.xpack.ml.inference.deployment.DeploymentLifecycleManager;
+import org.elasticsearch.xpack.ml.inference.deployment.ModelControlHandler;
+import org.elasticsearch.xpack.ml.inference.deployment.ModelInferenceHandler;
 
 public class TransportCreateTrainedModelAssignmentAction extends TransportMasterNodeAction<Request, Response> {
 
@@ -37,7 +39,9 @@ public class TransportCreateTrainedModelAssignmentAction extends TransportMaster
     public TransportCreateTrainedModelAssignmentAction(
         TrainedModelAssignmentClusterService trainedModelAssignmentClusterService,
         TrainedModelAssignmentService trainedModelAssignmentService,
-        DeploymentManager deploymentManager,
+        DeploymentLifecycleManager lifecycleManager,
+        ModelInferenceHandler inferenceHandler,
+        ModelControlHandler controlHandler,
         TransportService transportService,
         ClusterService clusterService,
         ThreadPool threadPool,
@@ -62,7 +66,9 @@ public class TransportCreateTrainedModelAssignmentAction extends TransportMaster
             new TrainedModelAssignmentNodeService(
                 trainedModelAssignmentService,
                 clusterService,
-                deploymentManager,
+                lifecycleManager,
+                inferenceHandler,
+                controlHandler,
                 indexNameExpressionResolver,
                 transportService.getTaskManager(),
                 threadPool,

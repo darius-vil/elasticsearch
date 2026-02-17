@@ -332,7 +332,9 @@ import org.elasticsearch.xpack.ml.inference.TrainedModelStatsService;
 import org.elasticsearch.xpack.ml.inference.adaptiveallocations.AdaptiveAllocationsScalerService;
 import org.elasticsearch.xpack.ml.inference.assignment.TrainedModelAssignmentClusterService;
 import org.elasticsearch.xpack.ml.inference.assignment.TrainedModelAssignmentService;
-import org.elasticsearch.xpack.ml.inference.deployment.DeploymentManager;
+import org.elasticsearch.xpack.ml.inference.deployment.DeploymentLifecycleManager;
+import org.elasticsearch.xpack.ml.inference.deployment.ModelControlHandler;
+import org.elasticsearch.xpack.ml.inference.deployment.ModelInferenceHandler;
 import org.elasticsearch.xpack.ml.inference.ingest.InferenceProcessor;
 import org.elasticsearch.xpack.ml.inference.loadingservice.ModelLoadingService;
 import org.elasticsearch.xpack.ml.inference.ltr.LearningToRankRescorerBuilder;
@@ -826,7 +828,9 @@ public class MachineLearning extends Plugin
     private final SetOnce<ModelLoadingService> modelLoadingService = new SetOnce<>();
     private final SetOnce<LearningToRankService> learningToRankService = new SetOnce<>();
     private final SetOnce<MlAutoscalingDeciderService> mlAutoscalingDeciderService = new SetOnce<>();
-    private final SetOnce<DeploymentManager> deploymentManager = new SetOnce<>();
+    private final SetOnce<DeploymentLifecycleManager> lifecycleManager = new SetOnce<>();
+    private final SetOnce<ModelInferenceHandler> inferenceHandler = new SetOnce<>();
+    private final SetOnce<ModelControlHandler> controlHandler = new SetOnce<>();
     private final SetOnce<TrainedModelAssignmentClusterService> trainedModelAllocationClusterService = new SetOnce<>();
 
     private final SetOnce<MachineLearningExtension> machineLearningExtension = new SetOnce<>();
@@ -1228,16 +1232,17 @@ public class MachineLearning extends Plugin
             new LearningToRankService(modelLoadingService, trainedModelProvider, services.scriptService(), services.xContentRegistry())
         );
 
-        this.deploymentManager.set(
-            new DeploymentManager(
-                client,
-                xContentRegistry,
-                threadPool,
-                pyTorchProcessFactory,
-                getMaxModelDeploymentsPerNode(),
-                inferenceAuditor
-            )
+        DeploymentLifecycleManager deploymentLifecycleManager = new DeploymentLifecycleManager(
+            client,
+            xContentRegistry,
+            threadPool,
+            pyTorchProcessFactory,
+            getMaxModelDeploymentsPerNode(),
+            inferenceAuditor
         );
+        this.lifecycleManager.set(deploymentLifecycleManager);
+        this.inferenceHandler.set(new ModelInferenceHandler(deploymentLifecycleManager, threadPool));
+        this.controlHandler.set(new ModelControlHandler(deploymentLifecycleManager, threadPool));
 
         // Data frame analytics components
         AnalyticsProcessManager analyticsProcessManager = new AnalyticsProcessManager(
@@ -1426,7 +1431,9 @@ public class MachineLearning extends Plugin
             trainedModelAssignmentService,
             trainedModelAllocationClusterService.get(),
             trainedModelStatsService,
-            deploymentManager.get(),
+            lifecycleManager.get(),
+            inferenceHandler.get(),
+            controlHandler.get(),
             nodeAvailabilityZoneMapper,
             new MachineLearningExtensionHolder(machineLearningExtension.get()),
             mlMetrics
