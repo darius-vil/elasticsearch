@@ -56,7 +56,7 @@ import static org.elasticsearch.xpack.ml.MachineLearning.UTILITY_THREAD_POOL_NAM
  * as part of the class decomposition.
  * <p>
  * Inference dispatch and control-message dispatch are handled separately by
- * {@code ModelInferenceHandler} and {@code ModelControlHandler} (to be created).
+ * {@link ModelInferenceHandler} and {@link ModelControlHandler}.
  */
 public class DeploymentLifecycleManager {
 
