@@ -31,6 +31,8 @@ import static org.elasticsearch.xpack.ml.MachineLearning.NATIVE_INFERENCE_COMMS_
 import static org.elasticsearch.xpack.ml.MachineLearning.UTILITY_THREAD_POOL_NAME;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.instanceOf;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -94,11 +96,12 @@ public class DeploymentManagerTests extends ESTestCase {
 
         AtomicInteger rejectedCount = new AtomicInteger();
 
-        DeploymentManager.ProcessContext context = mock(DeploymentManager.ProcessContext.class);
+        ProcessContext context = mock(ProcessContext.class);
         PyTorchResultProcessor resultProcessor = new PyTorchResultProcessor("1", threadSettings -> {});
         when(context.getResultProcessor()).thenReturn(resultProcessor);
         when(context.getPriorityProcessWorker()).thenReturn(priorityExecutorService);
         when(context.getRejectedExecutionCount()).thenReturn(rejectedCount);
+        doCallRealMethod().when(context).executePyTorchAction(any(), any());
 
         deploymentManager.addProcessContext(taskId, context);
         deploymentManager.infer(

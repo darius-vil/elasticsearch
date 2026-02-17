@@ -48,7 +48,7 @@ class InferencePyTorchAction extends AbstractPyTorchAction<InferenceResults> {
         String deploymentId,
         long requestId,
         TimeValue timeout,
-        DeploymentManager.ProcessContext processContext,
+        ProcessContext processContext,
         InferenceConfig config,
         NlpInferenceInput input,
         TrainedModelPrefixStrings.PrefixType prefixType,

@@ -24,7 +24,7 @@ public class ThreadSettingsControlMessagePytorchAction extends AbstractControlMe
         long requestId,
         int numAllocationThreads,
         TimeValue timeout,
-        DeploymentManager.ProcessContext processContext,
+        ProcessContext processContext,
         ThreadPool threadPool,
         ActionListener<ThreadSettings> listener
     ) {

@@ -35,7 +35,7 @@ abstract class AbstractControlMessagePyTorchAction<T> extends AbstractPyTorchAct
         String deploymentId,
         long requestId,
         TimeValue timeout,
-        DeploymentManager.ProcessContext processContext,
+        ProcessContext processContext,
         ThreadPool threadPool,
         ActionListener<T> listener
     ) {
