@@ -81,7 +81,7 @@ class ProcessContext {
     private final ThreadPool threadPool;
     private final InferenceAuditor inferenceAuditor;
 
-    // Injected callbacks to break circular dependency with DeploymentManager
+    // Injected callbacks to break circular dependency with DeploymentLifecycleManager
     private final Consumer<Long> removeProcessContext;
     private final RestartDeploymentHandler restartDeployment;
 

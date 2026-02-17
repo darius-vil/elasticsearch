@@ -60,7 +60,7 @@ public class InferencePyTorchActionTests extends ESTestCase {
     @Before
     public void managerSetup() {
         tp = new TestThreadPool(
-            "DeploymentManagerTests",
+            "InferencePyTorchActionTests",
             new ScalingExecutorBuilder(
                 UTILITY_THREAD_POOL_NAME,
                 1,

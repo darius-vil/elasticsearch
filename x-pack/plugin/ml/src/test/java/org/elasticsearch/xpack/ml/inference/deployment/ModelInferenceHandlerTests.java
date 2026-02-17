@@ -36,7 +36,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class DeploymentManagerTests extends ESTestCase {
+public class ModelInferenceHandlerTests extends ESTestCase {
 
     private ThreadPool tp;
     private InferenceAuditor inferenceAuditor;
@@ -44,7 +44,7 @@ public class DeploymentManagerTests extends ESTestCase {
     @Before
     public void managerSetup() {
         tp = new TestThreadPool(
-            "DeploymentManagerTests",
+            "ModelInferenceHandlerTests",
             new ScalingExecutorBuilder(
                 UTILITY_THREAD_POOL_NAME,
                 1,
@@ -78,7 +78,7 @@ public class DeploymentManagerTests extends ESTestCase {
         when(task.getModelId()).thenReturn("test-rejected");
         when(task.getDeploymentId()).thenReturn("test-rejected-deployment");
 
-        DeploymentManager deploymentManager = new DeploymentManager(
+        DeploymentLifecycleManager lifecycleManager = new DeploymentLifecycleManager(
             mock(Client.class),
             mock(NamedXContentRegistry.class),
             tp,
@@ -86,6 +86,8 @@ public class DeploymentManagerTests extends ESTestCase {
             10,
             inferenceAuditor
         );
+
+        ModelInferenceHandler inferenceHandler = new ModelInferenceHandler(lifecycleManager, tp);
 
         PriorityProcessWorkerExecutorService priorityExecutorService = new PriorityProcessWorkerExecutorService(
             tp.getThreadContext(),
@@ -103,8 +105,8 @@ public class DeploymentManagerTests extends ESTestCase {
         when(context.getRejectedExecutionCount()).thenReturn(rejectedCount);
         doCallRealMethod().when(context).executePyTorchAction(any(), any());
 
-        deploymentManager.addProcessContext(taskId, context);
-        deploymentManager.infer(
+        lifecycleManager.addProcessContext(taskId, context);
+        inferenceHandler.infer(
             task,
             mock(InferenceConfig.class),
             NlpInferenceInput.fromText("foo"),
