@@ -16,13 +16,14 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentFactory;
 import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
 
 import java.io.IOException;
 
 import static org.elasticsearch.core.Strings.format;
 
-abstract class AbstractControlMessagePyTorchAction<T> extends AbstractPyTorchAction<T> {
+abstract class AbstractControlMessagePyTorchAction<T, R extends PyTorchResult> extends AbstractPyTorchAction<T> {
 
     private static final Logger logger = LogManager.getLogger(AbstractControlMessagePyTorchAction.class);
 
@@ -46,7 +47,9 @@ abstract class AbstractControlMessagePyTorchAction<T> extends AbstractPyTorchAct
 
     abstract void writeMessage(XContentBuilder builder) throws IOException;
 
-    abstract T getResult(PyTorchResult result);
+    abstract Class<R> expectedResultType();
+
+    abstract T getResult(R result);
 
     @Override
     protected void doRun() throws Exception {
@@ -86,11 +89,11 @@ abstract class AbstractControlMessagePyTorchAction<T> extends AbstractPyTorchAct
     }
 
     private void processResponse(PyTorchResult result) {
-        if (result.isError()) {
-            onFailure(result.errorResult());
+        if (result instanceof PyTorchErrorResponse err) {
+            onFailure(err.errorResult());
             return;
         }
-        onSuccess(getResult(result));
+        onSuccess(getResult(expectedResultType().cast(result)));
     }
 
     @Override

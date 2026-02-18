@@ -11,9 +11,9 @@ import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.XContentBuilder;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchAckResponse;
 
-public class ClearCacheControlMessagePytorchAction extends AbstractControlMessagePyTorchAction<Boolean> {
+public class ClearCacheControlMessagePytorchAction extends AbstractControlMessagePyTorchAction<Boolean, PyTorchAckResponse> {
 
     ClearCacheControlMessagePytorchAction(
         String modelId,
@@ -37,7 +37,12 @@ public class ClearCacheControlMessagePytorchAction extends AbstractControlMessag
     }
 
     @Override
-    Boolean getResult(PyTorchResult result) {
+    Class<PyTorchAckResponse> expectedResultType() {
+        return PyTorchAckResponse.class;
+    }
+
+    @Override
+    Boolean getResult(PyTorchAckResponse result) {
         return true;
     }
 }

@@ -11,12 +11,13 @@ import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.XContentBuilder;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchThreadSettingsResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.ThreadSettings;
 
 import java.io.IOException;
 
-public class ThreadSettingsControlMessagePytorchAction extends AbstractControlMessagePyTorchAction<ThreadSettings> {
+public class ThreadSettingsControlMessagePytorchAction
+    extends AbstractControlMessagePyTorchAction<ThreadSettings, PyTorchThreadSettingsResponse> {
     private final int numAllocationThreads;
 
     ThreadSettingsControlMessagePytorchAction(
@@ -43,7 +44,12 @@ public class ThreadSettingsControlMessagePytorchAction extends AbstractControlMe
     }
 
     @Override
-    ThreadSettings getResult(PyTorchResult result) {
+    Class<PyTorchThreadSettingsResponse> expectedResultType() {
+        return PyTorchThreadSettingsResponse.class;
+    }
+
+    @Override
+    ThreadSettings getResult(PyTorchThreadSettingsResponse result) {
         return result.threadSettings();
     }
 }
