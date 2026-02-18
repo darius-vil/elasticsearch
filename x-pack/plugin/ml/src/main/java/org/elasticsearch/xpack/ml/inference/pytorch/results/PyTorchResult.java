@@ -7,88 +7,66 @@
 
 package org.elasticsearch.xpack.ml.inference.pytorch.results;
 
-import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.ToXContentObject;
-import org.elasticsearch.xcontent.XContentBuilder;
-
-import java.io.IOException;
 
 /**
- * The top level object capturing output from the pytorch process.
+ * Sealed interface capturing the possible output types from the pytorch process.
+ * The JSON type is determined by which fields are present; the parser inspects
+ * the populated field and returns the matching subtype.
  */
-public record PyTorchResult(
-    String requestId,
-    Boolean isCacheHit,
-    Long timeMs,
-    @Nullable PyTorchInferenceResult inferenceResult,
-    @Nullable ThreadSettings threadSettings,
-    @Nullable AckResult ackResult,
-    @Nullable ErrorResult errorResult
-) implements ToXContentObject {
+public sealed interface PyTorchResult
+    extends ToXContentObject
+    permits PyTorchInferenceResponse, PyTorchThreadSettingsResponse, PyTorchAckResponse, PyTorchErrorResponse {
 
-    private static final ParseField REQUEST_ID = new ParseField("request_id");
-    private static final ParseField CACHE_HIT = new ParseField("cache_hit");
-    private static final ParseField TIME_MS = new ParseField("time_ms");
+    String requestId();
 
-    private static final ParseField RESULT = new ParseField("result");
-    private static final ParseField THREAD_SETTINGS = new ParseField("thread_settings");
-    private static final ParseField ACK = new ParseField("ack");
+    ParseField REQUEST_ID = new ParseField("request_id");
+    ParseField CACHE_HIT = new ParseField("cache_hit");
+    ParseField TIME_MS = new ParseField("time_ms");
+    ParseField RESULT = new ParseField("result");
+    ParseField THREAD_SETTINGS = new ParseField("thread_settings");
+    ParseField ACK = new ParseField("ack");
 
-    public static final ConstructingObjectParser<PyTorchResult, Void> PARSER = new ConstructingObjectParser<>(
-        "pytorch_result",
-        a -> new PyTorchResult(
-            (String) a[0],
-            (Boolean) a[1],
-            (Long) a[2],
-            (PyTorchInferenceResult) a[3],
-            (ThreadSettings) a[4],
-            (AckResult) a[5],
-            (ErrorResult) a[6]
-        )
-    );
+    ConstructingObjectParser<PyTorchResult, Void> PARSER = createParser();
 
-    static {
-        PARSER.declareString(ConstructingObjectParser.constructorArg(), REQUEST_ID);
-        PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), CACHE_HIT);
-        PARSER.declareLong(ConstructingObjectParser.optionalConstructorArg(), TIME_MS);
-        PARSER.declareObject(ConstructingObjectParser.optionalConstructorArg(), PyTorchInferenceResult.PARSER, RESULT);
-        PARSER.declareObject(ConstructingObjectParser.optionalConstructorArg(), ThreadSettings.PARSER, THREAD_SETTINGS);
-        PARSER.declareObject(ConstructingObjectParser.optionalConstructorArg(), AckResult.PARSER, ACK);
-        PARSER.declareObject(ConstructingObjectParser.optionalConstructorArg(), ErrorResult.PARSER, ErrorResult.ERROR);
+    static PyTorchResult fromParsed(
+        String requestId,
+        Boolean isCacheHit,
+        Long timeMs,
+        PyTorchInferenceResult inferenceResult,
+        ThreadSettings threadSettings,
+        AckResult ackResult,
+        ErrorResult errorResult
+    ) {
+        if (errorResult != null) return new PyTorchErrorResponse(requestId, errorResult);
+        if (inferenceResult != null) return new PyTorchInferenceResponse(requestId, isCacheHit, timeMs, inferenceResult);
+        if (threadSettings != null) return new PyTorchThreadSettingsResponse(requestId, threadSettings);
+        if (ackResult != null) return new PyTorchAckResponse(requestId, ackResult);
+        return new PyTorchErrorResponse(requestId, new ErrorResult("unknown result type"));
     }
 
-    public boolean isError() {
-        return errorResult != null;
-    }
-
-    @Override
-    public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject();
-        if (requestId != null) {
-            builder.field(REQUEST_ID.getPreferredName(), requestId);
-        }
-        if (isCacheHit != null) {
-            builder.field(CACHE_HIT.getPreferredName(), isCacheHit);
-        }
-        if (timeMs != null) {
-            builder.field(TIME_MS.getPreferredName(), timeMs);
-        }
-        if (inferenceResult != null) {
-            builder.field(RESULT.getPreferredName(), inferenceResult);
-        }
-        if (threadSettings != null) {
-            builder.field(THREAD_SETTINGS.getPreferredName(), threadSettings);
-        }
-        if (ackResult != null) {
-            builder.field(ACK.getPreferredName(), ackResult);
-        }
-        if (errorResult != null) {
-            builder.field(ErrorResult.ERROR.getPreferredName(), errorResult);
-        }
-
-        builder.endObject();
-        return builder;
+    private static ConstructingObjectParser<PyTorchResult, Void> createParser() {
+        ConstructingObjectParser<PyTorchResult, Void> parser = new ConstructingObjectParser<>(
+            "pytorch_result",
+            a -> fromParsed(
+                (String) a[0],
+                (Boolean) a[1],
+                (Long) a[2],
+                (PyTorchInferenceResult) a[3],
+                (ThreadSettings) a[4],
+                (AckResult) a[5],
+                (ErrorResult) a[6]
+            )
+        );
+        parser.declareString(ConstructingObjectParser.constructorArg(), REQUEST_ID);
+        parser.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), CACHE_HIT);
+        parser.declareLong(ConstructingObjectParser.optionalConstructorArg(), TIME_MS);
+        parser.declareObject(ConstructingObjectParser.optionalConstructorArg(), PyTorchInferenceResult.PARSER, RESULT);
+        parser.declareObject(ConstructingObjectParser.optionalConstructorArg(), ThreadSettings.PARSER, THREAD_SETTINGS);
+        parser.declareObject(ConstructingObjectParser.optionalConstructorArg(), AckResult.PARSER, ACK);
+        parser.declareObject(ConstructingObjectParser.optionalConstructorArg(), ErrorResult.PARSER, ErrorResult.ERROR);
+        return parser;
     }
 }
