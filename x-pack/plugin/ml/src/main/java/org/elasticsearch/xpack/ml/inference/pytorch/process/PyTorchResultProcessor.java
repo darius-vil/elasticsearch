@@ -12,10 +12,12 @@ import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.xpack.core.ml.utils.Intervals;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.AckResult;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.ErrorResult;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResult;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchAckResponse;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchThreadSettingsResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.ThreadSettings;
 
 import java.time.Instant;
@@ -105,21 +107,14 @@ public class PyTorchResultProcessor {
             while (iterator.hasNext()) {
                 PyTorchResult result = iterator.next();
 
-                if (result.inferenceResult() != null) {
-                    processInferenceResult(result);
-                } else if (result.threadSettings() != null) {
-                    threadSettingsConsumer.accept(result.threadSettings());
-                    processThreadSettings(result);
-                } else if (result.ackResult() != null) {
-                    processAcknowledgement(result);
-                } else if (result.errorResult() != null) {
-                    processErrorResult(result);
-                } else {
-                    // will should only get here if the native process
-                    // has produced a partially valid result, one that
-                    // is accepted by the parser but does not have any
-                    // content
-                    handleUnknownResultType(result);
+                switch (result) {
+                    case PyTorchErrorResponse err -> processErrorResult(err);
+                    case PyTorchInferenceResponse inf -> processInferenceResult(inf);
+                    case PyTorchThreadSettingsResponse ts -> {
+                        threadSettingsConsumer.accept(ts.threadSettings());
+                        processThreadSettings(ts);
+                    }
+                    case PyTorchAckResponse ack -> processAcknowledgement(ack);
                 }
             }
         } catch (Exception e) {
@@ -146,15 +141,12 @@ public class PyTorchResultProcessor {
             logger.warn(format("[%s] clearing [%d] requests pending results", modelId, pendingResults.size()));
         }
         pendingResults.forEach(
-            (id, pendingResult) -> pendingResult.listener.onResponse(new PyTorchResult(id, null, null, null, null, null, errorResult))
+            (id, pendingResult) -> pendingResult.listener.onResponse(new PyTorchErrorResponse(id, errorResult))
         );
         pendingResults.clear();
     }
 
-    void processInferenceResult(PyTorchResult result) {
-        PyTorchInferenceResult inferenceResult = result.inferenceResult();
-        assert inferenceResult != null;
-
+    void processInferenceResult(PyTorchInferenceResponse result) {
         logger.debug(() -> format("[%s] Parsed inference result with id [%s]", modelId, result.requestId()));
         PendingResult pendingResult = pendingResults.remove(result.requestId());
         if (pendingResult == null) {
@@ -164,10 +156,7 @@ public class PyTorchResultProcessor {
         }
     }
 
-    void processThreadSettings(PyTorchResult result) {
-        ThreadSettings threadSettings = result.threadSettings();
-        assert threadSettings != null;
-
+    void processThreadSettings(PyTorchThreadSettingsResponse result) {
         logger.debug(() -> format("[%s] Parsed thread settings result with id [%s]", modelId, result.requestId()));
         PendingResult pendingResult = pendingResults.remove(result.requestId());
         if (pendingResult == null) {
@@ -177,10 +166,7 @@ public class PyTorchResultProcessor {
         }
     }
 
-    void processAcknowledgement(PyTorchResult result) {
-        AckResult ack = result.ackResult();
-        assert ack != null;
-
+    void processAcknowledgement(PyTorchAckResponse result) {
         logger.debug(() -> format("[%s] Parsed ack result with id [%s]", modelId, result.requestId()));
         PendingResult pendingResult = pendingResults.remove(result.requestId());
         if (pendingResult == null) {
@@ -190,10 +176,7 @@ public class PyTorchResultProcessor {
         }
     }
 
-    void processErrorResult(PyTorchResult result) {
-        ErrorResult errorResult = result.errorResult();
-        assert errorResult != null;
-
+    void processErrorResult(PyTorchErrorResponse result) {
         // Only one result is processed at any time, but we need to stop this happening part way through another thread getting stats
         synchronized (this) {
             errorCount++;
@@ -205,26 +188,6 @@ public class PyTorchResultProcessor {
             logger.debug(() -> format("[%s] no pending result for error [%s]", modelId, result.requestId()));
         } else {
             pendingResult.listener.onResponse(result);
-        }
-    }
-
-    void handleUnknownResultType(PyTorchResult result) {
-        if (result.requestId() != null) {
-            PendingResult pendingResult = pendingResults.remove(result.requestId());
-            if (pendingResult == null) {
-                logger.error(() -> format("[%s] no pending result listener for unknown result type [%s]", modelId, result));
-            } else {
-                String msg = format("[%s] pending result listener cannot handle unknown result type [%s]", modelId, result);
-                logger.error(msg);
-                var errorResult = new ErrorResult(msg);
-                pendingResult.listener.onResponse(new PyTorchResult(result.requestId(), null, null, null, null, null, errorResult));
-            }
-        } else {
-            // Cannot look up the listener without a request id
-            // all that can be done in this case is log a message.
-            // The result parser requires a request id so this
-            // code should not be hit.
-            logger.error(() -> format("[%s] cannot process unknown result type [%s]", modelId, result));
         }
     }
 
@@ -268,7 +231,7 @@ public class PyTorchResultProcessor {
         return new LongSummaryStatistics(stats.getCount(), stats.getMin(), stats.getMax(), stats.getSum());
     }
 
-    public synchronized void updateStats(PyTorchResult result) {
+    public synchronized void updateStats(PyTorchInferenceResponse result) {
         Long timeMs = result.timeMs();
         if (timeMs == null) {
             assert false : "time_ms should be set for an inference result";

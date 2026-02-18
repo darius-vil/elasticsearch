@@ -26,6 +26,8 @@ import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
 import org.elasticsearch.xpack.ml.inference.nlp.NlpTask;
 import org.elasticsearch.xpack.ml.inference.nlp.tokenizers.NlpTokenizer;
 import org.elasticsearch.xpack.ml.inference.nlp.tokenizers.TokenizationResult;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
 
 import java.io.IOException;
@@ -177,8 +179,8 @@ class InferencePyTorchAction extends AbstractPyTorchAction<InferenceResults> {
         TokenizationResult tokenization,
         NlpTask.ResultProcessor inferenceResultsProcessor
     ) {
-        if (pyTorchResult.isError()) {
-            onFailure(pyTorchResult.errorResult());
+        if (pyTorchResult instanceof PyTorchErrorResponse err) {
+            onFailure(err.errorResult());
             return;
         }
 
@@ -199,10 +201,11 @@ class InferencePyTorchAction extends AbstractPyTorchAction<InferenceResults> {
             return;
         }
 
-        getProcessContext().getResultProcessor().updateStats(pyTorchResult);
+        var inferenceResponse = (PyTorchInferenceResponse) pyTorchResult;
+        getProcessContext().getResultProcessor().updateStats(inferenceResponse);
         InferenceResults results = inferenceResultsProcessor.processResult(
             tokenization,
-            pyTorchResult.inferenceResult(),
+            inferenceResponse.inferenceResult(),
             this.chunkResponse
         );
         logger.debug(() -> format("[%s] processed result for request [%s]", getDeploymentId(), getRequestId()));
