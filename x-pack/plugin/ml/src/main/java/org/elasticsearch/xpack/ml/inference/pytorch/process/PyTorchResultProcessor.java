@@ -16,6 +16,7 @@ import org.elasticsearch.xpack.ml.inference.pytorch.results.ErrorResult;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchAckResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResponse;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchNativeException;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchThreadSettingsResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.ThreadSettings;
@@ -140,7 +141,7 @@ public class PyTorchResultProcessor {
         if (pendingResults.size() > 0) {
             logger.warn(format("[%s] clearing [%d] requests pending results", modelId, pendingResults.size()));
         }
-        pendingResults.forEach((id, pendingResult) -> pendingResult.listener.onResponse(new PyTorchErrorResponse(id, errorResult)));
+        pendingResults.forEach((id, pendingResult) -> pendingResult.listener.onFailure(new PyTorchNativeException(errorResult)));
         pendingResults.clear();
     }
 
@@ -185,7 +186,7 @@ public class PyTorchResultProcessor {
         if (pendingResult == null) {
             logger.debug(() -> format("[%s] no pending result for error [%s]", modelId, result.requestId()));
         } else {
-            pendingResult.listener.onResponse(result);
+            pendingResult.listener.onFailure(new PyTorchNativeException(result.errorResult()));
         }
     }
 

@@ -26,7 +26,6 @@ import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
 import org.elasticsearch.xpack.ml.inference.nlp.NlpTask;
 import org.elasticsearch.xpack.ml.inference.nlp.tokenizers.NlpTokenizer;
 import org.elasticsearch.xpack.ml.inference.nlp.tokenizers.TokenizationResult;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
 
@@ -179,11 +178,6 @@ class InferencePyTorchAction extends AbstractPyTorchAction<InferenceResults> {
         TokenizationResult tokenization,
         NlpTask.ResultProcessor inferenceResultsProcessor
     ) {
-        if (pyTorchResult instanceof PyTorchErrorResponse err) {
-            onFailure(err.errorResult());
-            return;
-        }
-
         logger.debug(() -> format("[%s] retrieved result for request [%s]", getDeploymentId(), getRequestId()));
         if (isNotified()) {
             // The request has timed out. No need to spend cycles processing the result.

@@ -16,7 +16,6 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentFactory;
 import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
 
 import java.io.IOException;
@@ -89,10 +88,6 @@ abstract class AbstractControlMessagePyTorchAction<T, R extends PyTorchResult> e
     }
 
     private void processResponse(PyTorchResult result) {
-        if (result instanceof PyTorchErrorResponse err) {
-            onFailure(err.errorResult());
-            return;
-        }
         onSuccess(getResult(expectedResultType().cast(result)));
     }
 

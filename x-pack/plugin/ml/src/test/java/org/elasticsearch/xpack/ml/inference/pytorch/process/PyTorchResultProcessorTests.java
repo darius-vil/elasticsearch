@@ -15,6 +15,7 @@ import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchAckResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchErrorResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchInferenceResult;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchNativeException;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchResult;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.PyTorchThreadSettingsResponse;
 import org.elasticsearch.xpack.ml.inference.pytorch.results.ThreadSettings;
@@ -33,6 +34,7 @@ import static org.elasticsearch.xpack.ml.inference.pytorch.process.PyTorchResult
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -69,7 +71,9 @@ public class PyTorchResultProcessorTests extends ESTestCase {
             r -> assertEquals(threadSettings, ((PyTorchThreadSettingsResponse) r).threadSettings())
         );
         var ackListener = new AssertingResultListener(r -> assertEquals(ack, ((PyTorchAckResponse) r).ackResult()));
-        var errorListener = new AssertingResultListener(r -> assertEquals(errorResult, ((PyTorchErrorResponse) r).errorResult()));
+        var errorListener = new AssertingFailureListener(
+            e -> assertThat(e.getMessage(), containsString("a bad thing has happened"))
+        );
 
         var processor = new PyTorchResultProcessor("foo", s -> {});
         processor.registerRequest("a", inferenceListener);
@@ -126,8 +130,8 @@ public class PyTorchResultProcessorTests extends ESTestCase {
         );
 
         // this listener should only be called when the processor shuts down
-        var calledOnShutdown = new AssertingResultListener(
-            r -> assertThat(((PyTorchErrorResponse) r).errorResult().error(), containsString("inference canceled as process is stopping"))
+        var calledOnShutdown = new AssertingFailureListener(
+            e -> assertThat(e.getMessage(), containsString("inference canceled as process is stopping"))
         );
         processor.registerRequest("b", calledOnShutdown);
 
@@ -156,17 +160,16 @@ public class PyTorchResultProcessorTests extends ESTestCase {
     public void testPendingRequestAreCalledAtShutdown() {
         var processor = new PyTorchResultProcessor("foo", s -> {});
 
-        Consumer<PyTorchResult> resultChecker = r -> {
-            var err = (PyTorchErrorResponse) r;
-            assertTrue(err.errorResult().isStopping());
-            assertEquals(err.errorResult().error(), "inference canceled as process is stopping");
+        Consumer<Exception> failureChecker = e -> {
+            assertThat(e, instanceOf(PyTorchNativeException.class));
+            assertThat(e.getMessage(), containsString("inference canceled as process is stopping"));
         };
 
         var listeners = List.of(
-            new AssertingResultListener(resultChecker),
-            new AssertingResultListener(resultChecker),
-            new AssertingResultListener(resultChecker),
-            new AssertingResultListener(resultChecker)
+            new AssertingFailureListener(failureChecker),
+            new AssertingFailureListener(failureChecker),
+            new AssertingFailureListener(failureChecker),
+            new AssertingFailureListener(failureChecker)
         );
 
         int i = 0;
@@ -184,17 +187,16 @@ public class PyTorchResultProcessorTests extends ESTestCase {
     public void testPendingRequestAreCalledOnException() {
         var processor = new PyTorchResultProcessor("foo", s -> {});
 
-        Consumer<PyTorchResult> resultChecker = r -> {
-            var err = (PyTorchErrorResponse) r;
-            assertFalse(err.errorResult().isStopping());
-            assertEquals(err.errorResult().error(), "inference native process died unexpectedly with failure [mocked exception]");
+        Consumer<Exception> failureChecker = e -> {
+            assertThat(e, instanceOf(PyTorchNativeException.class));
+            assertThat(e.getMessage(), containsString("inference native process died unexpectedly with failure [mocked exception]"));
         };
 
         var listeners = List.of(
-            new AssertingResultListener(resultChecker),
-            new AssertingResultListener(resultChecker),
-            new AssertingResultListener(resultChecker),
-            new AssertingResultListener(resultChecker)
+            new AssertingFailureListener(failureChecker),
+            new AssertingFailureListener(failureChecker),
+            new AssertingFailureListener(failureChecker),
+            new AssertingFailureListener(failureChecker)
         );
 
         int i = 0;
@@ -211,8 +213,8 @@ public class PyTorchResultProcessorTests extends ESTestCase {
 
     public void testsHandleUnknownResult() {
         var processor = new PyTorchResultProcessor("deployment-foo", settings -> {});
-        var listener = new AssertingResultListener(
-            r -> assertThat(((PyTorchErrorResponse) r).errorResult().error(), containsString("unknown result type"))
+        var listener = new AssertingFailureListener(
+            e -> assertThat(e.getMessage(), containsString("unknown result type"))
         );
 
         processor.registerRequest("no-result-content", listener);
@@ -242,6 +244,26 @@ public class PyTorchResultProcessorTests extends ESTestCase {
         @Override
         public void onFailure(Exception e) {
             fail(e.getMessage());
+        }
+    }
+
+    private static class AssertingFailureListener implements ActionListener<PyTorchResult> {
+        boolean hasResponse;
+        final Consumer<Exception> failureAsserter;
+
+        AssertingFailureListener(Consumer<Exception> failureAsserter) {
+            this.failureAsserter = failureAsserter;
+        }
+
+        @Override
+        public void onResponse(PyTorchResult pyTorchResult) {
+            fail("Expected onFailure but got onResponse");
+        }
+
+        @Override
+        public void onFailure(Exception e) {
+            hasResponse = true;
+            failureAsserter.accept(e);
         }
     }
 

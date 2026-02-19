@@ -16,7 +16,6 @@ import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
 import org.elasticsearch.xpack.ml.MachineLearning;
-import org.elasticsearch.xpack.ml.inference.pytorch.results.ErrorResult;
 import org.elasticsearch.xpack.ml.job.process.AbstractInitializableRunnable;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -115,11 +114,6 @@ abstract class AbstractPyTorchAction<T> extends AbstractInitializableRunnable {
             return;
         }
         getLogger().debug(() -> format("[%s] request [%s] received failure but listener already notified", deploymentId, requestId), e);
-    }
-
-    protected void onFailure(ErrorResult errorResult) {
-        var restStatus = errorResult.isStopping() ? RestStatus.CONFLICT : RestStatus.INTERNAL_SERVER_ERROR;
-        onFailure(new ElasticsearchStatusException("Error in inference process: [" + errorResult.error() + "]", restStatus));
     }
 
     boolean isNotified() {
