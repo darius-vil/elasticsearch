@@ -140,9 +140,7 @@ public class PyTorchResultProcessor {
         if (pendingResults.size() > 0) {
             logger.warn(format("[%s] clearing [%d] requests pending results", modelId, pendingResults.size()));
         }
-        pendingResults.forEach(
-            (id, pendingResult) -> pendingResult.listener.onResponse(new PyTorchErrorResponse(id, errorResult))
-        );
+        pendingResults.forEach((id, pendingResult) -> pendingResult.listener.onResponse(new PyTorchErrorResponse(id, errorResult)));
         pendingResults.clear();
     }
 

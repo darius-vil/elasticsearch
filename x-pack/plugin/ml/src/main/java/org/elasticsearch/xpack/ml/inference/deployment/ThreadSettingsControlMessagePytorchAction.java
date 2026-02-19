@@ -16,8 +16,9 @@ import org.elasticsearch.xpack.ml.inference.pytorch.results.ThreadSettings;
 
 import java.io.IOException;
 
-public class ThreadSettingsControlMessagePytorchAction
-    extends AbstractControlMessagePyTorchAction<ThreadSettings, PyTorchThreadSettingsResponse> {
+public class ThreadSettingsControlMessagePytorchAction extends AbstractControlMessagePyTorchAction<
+    ThreadSettings,
+    PyTorchThreadSettingsResponse> {
     private final int numAllocationThreads;
 
     ThreadSettingsControlMessagePytorchAction(

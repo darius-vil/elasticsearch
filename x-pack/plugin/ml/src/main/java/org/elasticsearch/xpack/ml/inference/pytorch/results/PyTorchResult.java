@@ -16,9 +16,8 @@ import org.elasticsearch.xcontent.ToXContentObject;
  * The JSON type is determined by which fields are present; the parser inspects
  * the populated field and returns the matching subtype.
  */
-public sealed interface PyTorchResult
-    extends ToXContentObject
-    permits PyTorchInferenceResponse, PyTorchThreadSettingsResponse, PyTorchAckResponse, PyTorchErrorResponse {
+public sealed interface PyTorchResult extends ToXContentObject permits PyTorchInferenceResponse, PyTorchThreadSettingsResponse,
+    PyTorchAckResponse, PyTorchErrorResponse {
 
     String requestId();
 

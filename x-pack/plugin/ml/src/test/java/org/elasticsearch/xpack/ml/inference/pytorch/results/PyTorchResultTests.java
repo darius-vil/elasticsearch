@@ -19,18 +19,15 @@ public class PyTorchResultTests extends AbstractXContentTestCase<PyTorchResult> 
         String requestId = randomAlphaOfLength(5);
         int type = randomIntBetween(0, 3);
         return switch (type) {
-            case 0 -> new PyTorchResult(
+            case 0 -> new PyTorchInferenceResponse(
                 requestId,
                 randomBoolean(),
                 randomNonNegativeLong(),
-                PyTorchInferenceResultTests.createRandom(),
-                null,
-                null,
-                null
+                PyTorchInferenceResultTests.createRandom()
             );
-            case 1 -> new PyTorchResult(requestId, null, null, null, ThreadSettingsTests.createRandom(), null, null);
-            case 2 -> new PyTorchResult(requestId, null, null, null, null, AckResultTests.createRandom(), null);
-            default -> new PyTorchResult(requestId, null, null, null, null, null, ErrorResultTests.createRandom());
+            case 1 -> new PyTorchThreadSettingsResponse(requestId, ThreadSettingsTests.createRandom());
+            case 2 -> new PyTorchAckResponse(requestId, AckResultTests.createRandom());
+            default -> new PyTorchErrorResponse(requestId, ErrorResultTests.createRandom());
         };
     }
 
