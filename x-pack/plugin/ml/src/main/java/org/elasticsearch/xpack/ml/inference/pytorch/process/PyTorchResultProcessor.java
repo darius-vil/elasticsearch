@@ -106,17 +106,7 @@ public class PyTorchResultProcessor {
         try {
             Iterator<PyTorchResult> iterator = process.readResults();
             while (iterator.hasNext()) {
-                PyTorchResult result = iterator.next();
-
-                switch (result) {
-                    case PyTorchErrorResponse err -> processErrorResult(err);
-                    case PyTorchInferenceResponse inf -> processInferenceResult(inf);
-                    case PyTorchThreadSettingsResponse ts -> {
-                        threadSettingsConsumer.accept(ts.threadSettings());
-                        processThreadSettings(ts);
-                    }
-                    case PyTorchAckResponse ack -> processAcknowledgement(ack);
-                }
+                processResult(iterator.next());
             }
         } catch (Exception e) {
             // No need to report error as we're stopping
@@ -145,38 +135,32 @@ public class PyTorchResultProcessor {
         pendingResults.clear();
     }
 
-    void processInferenceResult(PyTorchInferenceResponse result) {
-        logger.debug(() -> format("[%s] Parsed inference result with id [%s]", modelId, result.requestId()));
+    void processResult(PyTorchResult result) {
+        switch (result) {
+            case PyTorchErrorResponse err -> processErrorResult(err);
+            case PyTorchInferenceResponse inf -> {
+                updateStats(inf);
+                notifyResult(inf, "inference");
+            }
+            case PyTorchThreadSettingsResponse ts -> {
+                threadSettingsConsumer.accept(ts.threadSettings());
+                notifyResult(ts, "thread settings");
+            }
+            case PyTorchAckResponse ack -> notifyResult(ack, "ack");
+        }
+    }
+
+    private void notifyResult(PyTorchResult result, String resultType) {
+        logger.debug(() -> format("[%s] Parsed %s result with id [%s]", modelId, resultType, result.requestId()));
         PendingResult pendingResult = pendingResults.remove(result.requestId());
         if (pendingResult == null) {
-            logger.debug(() -> format("[%s] no pending result for inference [%s]", modelId, result.requestId()));
+            logger.debug(() -> format("[%s] no pending result for %s [%s]", modelId, resultType, result.requestId()));
         } else {
             pendingResult.listener.onResponse(result);
         }
     }
 
-    void processThreadSettings(PyTorchThreadSettingsResponse result) {
-        logger.debug(() -> format("[%s] Parsed thread settings result with id [%s]", modelId, result.requestId()));
-        PendingResult pendingResult = pendingResults.remove(result.requestId());
-        if (pendingResult == null) {
-            logger.debug(() -> format("[%s] no pending result for thread settings [%s]", modelId, result.requestId()));
-        } else {
-            pendingResult.listener.onResponse(result);
-        }
-    }
-
-    void processAcknowledgement(PyTorchAckResponse result) {
-        logger.debug(() -> format("[%s] Parsed ack result with id [%s]", modelId, result.requestId()));
-        PendingResult pendingResult = pendingResults.remove(result.requestId());
-        if (pendingResult == null) {
-            logger.debug(() -> format("[%s] no pending result for ack [%s]", modelId, result.requestId()));
-        } else {
-            pendingResult.listener.onResponse(result);
-        }
-    }
-
-    void processErrorResult(PyTorchErrorResponse result) {
-        // Only one result is processed at any time, but we need to stop this happening part way through another thread getting stats
+    private void processErrorResult(PyTorchErrorResponse result) {
         synchronized (this) {
             errorCount++;
         }
@@ -230,7 +214,7 @@ public class PyTorchResultProcessor {
         return new LongSummaryStatistics(stats.getCount(), stats.getMin(), stats.getMax(), stats.getSum());
     }
 
-    public synchronized void updateStats(PyTorchInferenceResponse result) {
+    private synchronized void updateStats(PyTorchInferenceResponse result) {
         Long timeMs = result.timeMs();
         if (timeMs == null) {
             assert false : "time_ms should be set for an inference result";
