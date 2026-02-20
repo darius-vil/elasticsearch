@@ -214,7 +214,7 @@ public class PyTorchResultProcessor {
         return new LongSummaryStatistics(stats.getCount(), stats.getMin(), stats.getMax(), stats.getSum());
     }
 
-    private synchronized void updateStats(PyTorchInferenceResponse result) {
+    public synchronized void updateStats(PyTorchInferenceResponse result) {
         Long timeMs = result.timeMs();
         if (timeMs == null) {
             assert false : "time_ms should be set for an inference result";

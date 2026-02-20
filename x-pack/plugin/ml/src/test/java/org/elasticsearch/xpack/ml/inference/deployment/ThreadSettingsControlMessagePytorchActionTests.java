@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 public class ThreadSettingsControlMessagePytorchActionTests extends ESTestCase {
 
     public void testBuildControlMessage() throws IOException {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
         ThreadPool tp = mock(ThreadPool.class);
         ThreadSettingsControlMessagePytorchAction action = new ThreadSettingsControlMessagePytorchAction(
             "model_id",
@@ -54,7 +54,7 @@ public class ThreadSettingsControlMessagePytorchActionTests extends ESTestCase {
 
     @SuppressWarnings("unchecked")
     public void testRunNotCalledAfterNotified() {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
         PyTorchResultProcessor resultProcessor = mock(PyTorchResultProcessor.class);
         when(processContext.getResultProcessor()).thenReturn(resultProcessor);
         AtomicInteger timeoutCount = new AtomicInteger();
@@ -105,7 +105,7 @@ public class ThreadSettingsControlMessagePytorchActionTests extends ESTestCase {
 
     @SuppressWarnings("unchecked")
     public void testDoRun() throws IOException {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
         PyTorchResultProcessor resultProcessor = mock(PyTorchResultProcessor.class);
         when(processContext.getResultProcessor()).thenReturn(resultProcessor);
         AtomicInteger timeoutCount = new AtomicInteger();

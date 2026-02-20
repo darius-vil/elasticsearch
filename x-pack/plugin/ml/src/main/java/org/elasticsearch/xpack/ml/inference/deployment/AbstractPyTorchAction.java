@@ -28,7 +28,7 @@ abstract class AbstractPyTorchAction<T> extends AbstractInitializableRunnable {
     private final long requestId;
     private final TimeValue timeout;
     private Scheduler.Cancellable timeoutHandler;
-    private final DeploymentManager.ProcessContext processContext;
+    private final InferenceProcessManger.ProcessContext processContext;
     private final AtomicBoolean notified = new AtomicBoolean();
     private final ActionListener<T> listener;
     private final ThreadPool threadPool;
@@ -37,7 +37,7 @@ abstract class AbstractPyTorchAction<T> extends AbstractInitializableRunnable {
         String deploymentId,
         long requestId,
         TimeValue timeout,
-        DeploymentManager.ProcessContext processContext,
+        InferenceProcessManger.ProcessContext processContext,
         ThreadPool threadPool,
         ActionListener<T> listener
     ) {
@@ -128,7 +128,7 @@ abstract class AbstractPyTorchAction<T> extends AbstractInitializableRunnable {
         return deploymentId;
     }
 
-    DeploymentManager.ProcessContext getProcessContext() {
+    InferenceProcessManger.ProcessContext getProcessContext() {
         return processContext;
     }
 

@@ -78,7 +78,7 @@ public class InferencePyTorchActionTests extends ESTestCase {
     }
 
     public void testInferListenerOnlyCalledOnce() {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
         PyTorchResultProcessor resultProcessor = new PyTorchResultProcessor("1", threadSettings -> {});
         when(processContext.getResultProcessor()).thenReturn(resultProcessor);
         AtomicInteger timeoutCount = new AtomicInteger();
@@ -157,7 +157,7 @@ public class InferencePyTorchActionTests extends ESTestCase {
     }
 
     public void testRunNotCalledAfterNotified() {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
         PyTorchResultProcessor resultProcessor = mock(PyTorchResultProcessor.class);
         when(processContext.getResultProcessor()).thenReturn(resultProcessor);
         AtomicInteger timeoutCount = new AtomicInteger();
@@ -206,7 +206,7 @@ public class InferencePyTorchActionTests extends ESTestCase {
     }
 
     public void testCallingRunAfterParentTaskCancellation() throws Exception {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
         PyTorchResultProcessor resultProcessor = mock(PyTorchResultProcessor.class);
         when(processContext.getResultProcessor()).thenReturn(resultProcessor);
         AtomicInteger timeoutCount = new AtomicInteger();
@@ -254,7 +254,7 @@ public class InferencePyTorchActionTests extends ESTestCase {
 
     @SuppressWarnings("unchecked")
     public void testPrefixStrings() throws Exception {
-        DeploymentManager.ProcessContext processContext = mock(DeploymentManager.ProcessContext.class);
+        InferenceProcessManger.ProcessContext processContext = mock(InferenceProcessManger.ProcessContext.class);
 
         TrainedModelPrefixStrings prefixStrings = new TrainedModelPrefixStrings("ingest_prefix: ", "search_prefix: ");
         when(processContext.getPrefixStrings()).thenReturn(new SetOnce<>(prefixStrings));

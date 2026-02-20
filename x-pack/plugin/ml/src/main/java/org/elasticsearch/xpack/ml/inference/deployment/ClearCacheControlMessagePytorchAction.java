@@ -19,7 +19,7 @@ public class ClearCacheControlMessagePytorchAction extends AbstractControlMessag
         String modelId,
         long requestId,
         TimeValue timeout,
-        DeploymentManager.ProcessContext processContext,
+        InferenceProcessManger.ProcessContext processContext,
         ThreadPool threadPool,
         ActionListener<Boolean> listener
     ) {

@@ -39,7 +39,7 @@ import org.elasticsearch.xpack.core.ml.inference.assignment.RoutingInfo;
 import org.elasticsearch.xpack.core.ml.inference.assignment.RoutingState;
 import org.elasticsearch.xpack.core.ml.inference.assignment.TrainedModelAssignment;
 import org.elasticsearch.xpack.core.ml.inference.assignment.TrainedModelAssignmentMetadata;
-import org.elasticsearch.xpack.ml.inference.deployment.DeploymentManager;
+import org.elasticsearch.xpack.ml.inference.deployment.InferenceProcessManger;
 import org.elasticsearch.xpack.ml.inference.deployment.TrainedModelDeploymentTask;
 import org.junit.After;
 import org.junit.Before;
@@ -69,7 +69,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
     private static final String NODE_ID = "test-node";
 
     private ClusterService clusterService;
-    private DeploymentManager deploymentManager;
+    private InferenceProcessManger inferenceProcessManger;
     private ThreadPool threadPool;
     private TrainedModelAssignmentService trainedModelAssignmentService;
     private TaskManager taskManager;
@@ -91,12 +91,12 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
             )
         );
         taskManager = new TaskManager(Settings.EMPTY, threadPool, Collections.emptySet());
-        deploymentManager = mock(DeploymentManager.class);
+        inferenceProcessManger = mock(InferenceProcessManger.class);
         doAnswer(invocationOnMock -> {
             ActionListener listener = invocationOnMock.getArgument(1);
             listener.onResponse(invocationOnMock.getArgument(0));
             return null;
-        }).when(deploymentManager).startDeployment(any(), any());
+        }).when(inferenceProcessManger).startDeployment(any(), any());
 
         doAnswer(invocationOnMock -> {
             ActionListener listener = invocationOnMock.getArgument(1);
@@ -113,7 +113,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
     public void testLoadQueuedModels_GivenNoQueuedModels() throws InterruptedException {
         // When there are no queued models
         loadQueuedModels(createService());
-        verify(deploymentManager, never()).startDeployment(any(), any());
+        verify(inferenceProcessManger, never()).startDeployment(any(), any());
     }
 
     private void loadQueuedModels(TrainedModelAssignmentNodeService trainedModelAssignmentNodeService) throws InterruptedException {
@@ -157,7 +157,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> requestCapture = ArgumentCaptor.forClass(
             UpdateTrainedModelAssignmentRoutingInfoAction.Request.class
         );
-        verify(deploymentManager, times(2)).startDeployment(taskCapture.capture(), any());
+        verify(inferenceProcessManger, times(2)).startDeployment(taskCapture.capture(), any());
         verify(trainedModelAssignmentService, times(2)).updateModelAssignmentState(requestCapture.capture(), any());
 
         assertThat(taskCapture.getAllValues().get(0).getModelId(), equalTo(modelToLoad));
@@ -173,7 +173,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         // Since models are loaded, there shouldn't be any more loadings to occur
         trainedModelAssignmentNodeService.prepareModelToLoad(newParams(anotherDeployment, anotherModel));
         loadQueuedModels(trainedModelAssignmentNodeService);
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testLoadQueuedModelsWhenFailureIsRetried() throws InterruptedException {
@@ -197,7 +197,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> requestCapture = ArgumentCaptor.forClass(
             UpdateTrainedModelAssignmentRoutingInfoAction.Request.class
         );
-        verify(deploymentManager, times(3)).startDeployment(startTaskCapture.capture(), any());
+        verify(inferenceProcessManger, times(3)).startDeployment(startTaskCapture.capture(), any());
         // Only the successful one is notifying, the failed one keeps retrying but not notifying as it is never successful
         verify(trainedModelAssignmentService, times(1)).updateModelAssignmentState(requestCapture.capture(), any());
 
@@ -211,7 +211,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         assertThat(startTaskCapture.getAllValues().get(2).getModelId(), equalTo(failedModelToLoad));
         assertThat(startTaskCapture.getAllValues().get(2).getDeploymentId(), equalTo(failedDeploymentId));
 
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testLoadQueuedModelsWhenStopped() throws InterruptedException {
@@ -230,7 +230,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
             "loadQueuedModels should immediately call the listener without forking to another thread.",
             latch.await(0, TimeUnit.SECONDS)
         );
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testLoadQueuedModelsWhenTaskIsStopped() throws Exception {
@@ -256,7 +256,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         assertBusy(() -> {
             ArgumentCaptor<TrainedModelDeploymentTask> stoppedTaskCapture = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
-            verify(deploymentManager, times(1)).stopDeployment(stoppedTaskCapture.capture());
+            verify(inferenceProcessManger, times(1)).stopDeployment(stoppedTaskCapture.capture());
             assertThat(stoppedTaskCapture.getValue().getModelId(), equalTo(stoppedModelToLoad));
             assertThat(stoppedTaskCapture.getValue().getDeploymentId(), equalTo(stoppedLoadingDeploymentId));
         });
@@ -264,7 +264,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> requestCapture = ArgumentCaptor.forClass(
             UpdateTrainedModelAssignmentRoutingInfoAction.Request.class
         );
-        verify(deploymentManager, times(1)).startDeployment(startTaskCapture.capture(), any());
+        verify(inferenceProcessManger, times(1)).startDeployment(startTaskCapture.capture(), any());
         assertBusy(
             () -> verify(trainedModelAssignmentService, times(3)).updateModelAssignmentState(requestCapture.capture(), any()),
             3,
@@ -289,7 +289,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         }
         assertThat(startTaskCapture.getAllValues().get(0).getModelId(), equalTo(modelToLoad));
 
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testLoadQueuedModelsWhenOneFails() throws InterruptedException {
@@ -315,11 +315,11 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> requestCapture = ArgumentCaptor.forClass(
             UpdateTrainedModelAssignmentRoutingInfoAction.Request.class
         );
-        verify(deploymentManager, times(2)).startDeployment(startTaskCapture.capture(), any());
+        verify(inferenceProcessManger, times(2)).startDeployment(startTaskCapture.capture(), any());
         verify(trainedModelAssignmentService, times(2)).updateModelAssignmentState(requestCapture.capture(), any());
 
         ArgumentCaptor<TrainedModelDeploymentTask> stopTaskCapture = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
-        verify(deploymentManager).stopDeployment(stopTaskCapture.capture());
+        verify(inferenceProcessManger).stopDeployment(stopTaskCapture.capture());
 
         assertThat(startTaskCapture.getAllValues().get(0).getModelId(), equalTo(modelToLoad));
         assertThat(requestCapture.getAllValues().get(0).getDeploymentId(), equalTo(loadingDeploymentId));
@@ -333,7 +333,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         assertThat(stopTaskCapture.getValue().getModelId(), equalTo(failedModelToLoad));
 
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChangedWithResetMode() throws InterruptedException {
@@ -381,7 +381,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         trainedModelAssignmentNodeService.clusterChanged(event);
         loadQueuedModels(trainedModelAssignmentNodeService);
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_WhenAssignmentIsRoutedToShuttingDownNode_CallsStopAfterCompletingPendingWork() throws Exception {
@@ -406,7 +406,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
             ActionListener<AcknowledgedResponse> listener = (ActionListener) invocationOnMock.getArguments()[1];
             listener.onResponse(AcknowledgedResponse.TRUE);
             return null;
-        }).when(deploymentManager).stopAfterCompletingPendingWork(any(), any());
+        }).when(inferenceProcessManger).stopAfterCompletingPendingWork(any(), any());
 
         var taskParams = newParams(deploymentOne, modelOne);
 
@@ -441,7 +441,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         }
 
         assertBusy(() -> {
-            verify(deploymentManager, times(1)).stopAfterCompletingPendingWork(stopParamsCapture.capture(), any());
+            verify(inferenceProcessManger, times(1)).stopAfterCompletingPendingWork(stopParamsCapture.capture(), any());
             assertThat(stopParamsCapture.getValue().getModelId(), equalTo(modelOne));
             assertThat(stopParamsCapture.getValue().getDeploymentId(), equalTo(deploymentOne));
         });
@@ -449,7 +449,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
             any(UpdateTrainedModelAssignmentRoutingInfoAction.Request.class),
             any()
         );
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_WhenAssignmentIsRoutedToShuttingDownNode_ButOtherAllocationIsNotReady_DoesNotCallStop() {
@@ -492,12 +492,12 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         trainedModelAssignmentNodeService.prepareModelToLoad(taskParams);
         trainedModelAssignmentNodeService.clusterChanged(event);
 
-        verify(deploymentManager, never()).stopAfterCompletingPendingWork(any(), any());
+        verify(inferenceProcessManger, never()).stopAfterCompletingPendingWork(any(), any());
         verify(trainedModelAssignmentService, never()).updateModelAssignmentState(
             any(UpdateTrainedModelAssignmentRoutingInfoAction.Request.class),
             any()
         );
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_WhenAssignmentIsRoutedToShuttingDownNodeButAlreadyRemoved_DoesNotCallStop() {
@@ -533,12 +533,12 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         trainedModelAssignmentNodeService.clusterChanged(event);
 
-        verify(deploymentManager, never()).stopAfterCompletingPendingWork(any(), any());
+        verify(inferenceProcessManger, never()).stopAfterCompletingPendingWork(any(), any());
         verify(trainedModelAssignmentService, never()).updateModelAssignmentState(
             any(UpdateTrainedModelAssignmentRoutingInfoAction.Request.class),
             any()
         );
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_WhenAssignmentIsRoutedToShuttingDownNodeWithStartingState_DoesNotStopTheDeployment() {
@@ -575,12 +575,12 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         trainedModelAssignmentNodeService.prepareModelToLoad(taskParams);
         trainedModelAssignmentNodeService.clusterChanged(event);
 
-        verify(deploymentManager, never()).stopAfterCompletingPendingWork(any(), any());
+        verify(inferenceProcessManger, never()).stopAfterCompletingPendingWork(any(), any());
         verify(trainedModelAssignmentService, never()).updateModelAssignmentState(
             any(UpdateTrainedModelAssignmentRoutingInfoAction.Request.class),
             any()
         );
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_WhenNodeDoesNotExistInAssignmentRoutingTable_DoesGracefullyStopTheDeployment() throws Exception {
@@ -612,14 +612,14 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         trainedModelAssignmentNodeService.prepareModelToLoad(taskParams);
         trainedModelAssignmentNodeService.clusterChanged(event);
 
-        assertBusy(() -> verify(deploymentManager, times(1)).stopAfterCompletingPendingWork(any(), any()));
+        assertBusy(() -> verify(inferenceProcessManger, times(1)).stopAfterCompletingPendingWork(any(), any()));
         // This still shouldn't trigger a cluster state update because the routing entry wasn't in the table so we won't add a new routing
         // entry for stopping
         verify(trainedModelAssignmentService, never()).updateModelAssignmentState(
             any(UpdateTrainedModelAssignmentRoutingInfoAction.Request.class),
             any()
         );
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_WhenAssignmentIsStopping_DoesNotAddModelToBeLoaded() throws InterruptedException {
@@ -657,8 +657,8 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         trainedModelAssignmentNodeService.clusterChanged(event);
         loadQueuedModels(trainedModelAssignmentNodeService);
 
-        verify(deploymentManager, never()).startDeployment(any(), any());
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verify(inferenceProcessManger, never()).startDeployment(any(), any());
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged() throws Exception {
@@ -776,14 +776,14 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
             ArgumentCaptor<TrainedModelDeploymentTask> stoppedTaskCapture = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
             // deployment-2 was originally started on node NODE_ID but in the latest cluster event it is no longer on that node so we will
             // gracefully stop it
-            verify(deploymentManager, times(1)).stopAfterCompletingPendingWork(stoppedTaskCapture.capture(), any());
+            verify(inferenceProcessManger, times(1)).stopAfterCompletingPendingWork(stoppedTaskCapture.capture(), any());
             assertThat(stoppedTaskCapture.getAllValues().get(0).getDeploymentId(), equalTo(deploymentTwo));
         });
         ArgumentCaptor<TrainedModelDeploymentTask> startTaskCapture = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> requestCapture = ArgumentCaptor.forClass(
             UpdateTrainedModelAssignmentRoutingInfoAction.Request.class
         );
-        verify(deploymentManager, times(1)).startDeployment(startTaskCapture.capture(), any());
+        verify(inferenceProcessManger, times(1)).startDeployment(startTaskCapture.capture(), any());
         verify(trainedModelAssignmentService, times(1)).updateModelAssignmentState(requestCapture.capture(), any());
 
         assertThat(startTaskCapture.getAllValues().get(0).getModelId(), equalTo(modelOne));
@@ -817,7 +817,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         loadQueuedModels(trainedModelAssignmentNodeService);
 
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     public void testClusterChanged_GivenAllStartedAssignments_AndNonMatchingTargetAllocations() throws Exception {
@@ -833,8 +833,8 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         loadQueuedModels(trainedModelAssignmentNodeService, true);
         loadQueuedModels(trainedModelAssignmentNodeService, false);
 
-        DeploymentManager.ProcessContext mockProcessContext = mock(DeploymentManager.ProcessContext.class);
-        when(deploymentManager.getProcessContext(any(TrainedModelDeploymentTask.class), any())).thenReturn(mockProcessContext);
+        InferenceProcessManger.ProcessContext mockProcessContext = mock(InferenceProcessManger.ProcessContext.class);
+        when(inferenceProcessManger.getRunningProcessContext(any(TrainedModelDeploymentTask.class), any())).thenReturn(mockProcessContext);
 
         ClusterChangedEvent event = new ClusterChangedEvent(
             "shouldUpdateAllocations",
@@ -868,7 +868,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         assertBusy(() -> {
             ArgumentCaptor<TrainedModelDeploymentTask> updatedTasks = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
-            verify(deploymentManager, times(2)).getProcessContext(updatedTasks.capture(), any());
+            verify(inferenceProcessManger, times(2)).getRunningProcessContext(updatedTasks.capture(), any());
             assertThat(updatedTasks.getAllValues().get(0).getModelId(), equalTo(modelOne));
             assertThat(updatedTasks.getAllValues().get(0).getDeploymentId(), equalTo(deploymentOne));
             assertThat(updatedTasks.getAllValues().get(1).getModelId(), equalTo(modelTwo));
@@ -879,7 +879,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> updateCapture = ArgumentCaptor.forClass(
             UpdateTrainedModelAssignmentRoutingInfoAction.Request.class
         );
-        verify(deploymentManager, times(2)).startDeployment(startTaskCapture.capture(), any());
+        verify(inferenceProcessManger, times(2)).startDeployment(startTaskCapture.capture(), any());
         verify(trainedModelAssignmentService, times(2)).updateModelAssignmentState(updateCapture.capture(), any());
 
         assertThat(startTaskCapture.getAllValues().get(0).getModelId(), equalTo(modelOne));
@@ -891,7 +891,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         assertThat(updateCapture.getAllValues().get(1).getNodeId(), equalTo(NODE_ID));
         assertThat(updateCapture.getAllValues().get(1).getUpdate().getStateAndReason().get().getState(), equalTo(RoutingState.STARTED));
 
-        verifyNoMoreInteractions(deploymentManager, trainedModelAssignmentService);
+        verifyNoMoreInteractions(inferenceProcessManger, trainedModelAssignmentService);
     }
 
     private void givenAssignmentsInClusterStateForModels(List<String> deploymentIds, List<String> modelIds) {
@@ -923,7 +923,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
                 listener.onResponse(task);
             }
             return null;
-        }).when(deploymentManager).startDeployment(any(), any());
+        }).when(inferenceProcessManger).startDeployment(any(), any());
     }
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
@@ -937,7 +937,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
                 listener.onResponse(task);
             }
             return null;
-        }).when(deploymentManager).startDeployment(any(), any());
+        }).when(inferenceProcessManger).startDeployment(any(), any());
     }
 
     private static StartTrainedModelDeploymentAction.TaskParams newParams(String deploymentId, String modelId) {
@@ -959,7 +959,7 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         return new TrainedModelAssignmentNodeService(
             trainedModelAssignmentService,
             clusterService,
-            deploymentManager,
+            inferenceProcessManger,
             TestIndexNameExpressionResolver.newInstance(),
             taskManager,
             threadPool,

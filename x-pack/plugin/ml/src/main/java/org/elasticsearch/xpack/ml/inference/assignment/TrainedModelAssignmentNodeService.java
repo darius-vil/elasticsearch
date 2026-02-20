@@ -47,7 +47,7 @@ import org.elasticsearch.xpack.core.ml.inference.persistence.InferenceIndexConst
 import org.elasticsearch.xpack.core.ml.inference.trainedmodel.InferenceConfig;
 import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
 import org.elasticsearch.xpack.ml.MachineLearning;
-import org.elasticsearch.xpack.ml.inference.deployment.DeploymentManager;
+import org.elasticsearch.xpack.ml.inference.deployment.InferenceProcessManger;
 import org.elasticsearch.xpack.ml.inference.deployment.ModelStats;
 import org.elasticsearch.xpack.ml.inference.deployment.NlpInferenceInput;
 import org.elasticsearch.xpack.ml.inference.deployment.TrainedModelDeploymentTask;
@@ -79,7 +79,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
     private static final TimeValue CONTROL_MESSAGE_TIMEOUT = TimeValue.timeValueSeconds(60);
     private static final Logger logger = LogManager.getLogger(TrainedModelAssignmentNodeService.class);
     private final TrainedModelAssignmentService trainedModelAssignmentService;
-    private final DeploymentManager deploymentManager;
+    private final InferenceProcessManger inferenceProcessManger;
     private final TaskManager taskManager;
     private final Map<String, TrainedModelDeploymentTask> deploymentIdToTask;
     private final ThreadPool threadPool;
@@ -94,14 +94,14 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
     public TrainedModelAssignmentNodeService(
         TrainedModelAssignmentService trainedModelAssignmentService,
         ClusterService clusterService,
-        DeploymentManager deploymentManager,
+        InferenceProcessManger inferenceProcessManger,
         IndexNameExpressionResolver expressionResolver,
         TaskManager taskManager,
         ThreadPool threadPool,
         XPackLicenseState licenseState
     ) {
         this.trainedModelAssignmentService = trainedModelAssignmentService;
-        this.deploymentManager = deploymentManager;
+        this.inferenceProcessManger = inferenceProcessManger;
         this.taskManager = taskManager;
         this.deploymentIdToTask = new ConcurrentHashMap<>();
         this.loadingModels = new ConcurrentLinkedDeque<>();
@@ -125,7 +125,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
     TrainedModelAssignmentNodeService(
         TrainedModelAssignmentService trainedModelAssignmentService,
         ClusterService clusterService,
-        DeploymentManager deploymentManager,
+        InferenceProcessManger inferenceProcessManger,
         IndexNameExpressionResolver expressionResolver,
         TaskManager taskManager,
         ThreadPool threadPool,
@@ -133,7 +133,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
         XPackLicenseState licenseState
     ) {
         this.trainedModelAssignmentService = trainedModelAssignmentService;
-        this.deploymentManager = deploymentManager;
+        this.inferenceProcessManger = inferenceProcessManger;
         this.taskManager = taskManager;
         this.deploymentIdToTask = new ConcurrentHashMap<>();
         this.loadingModels = new ConcurrentLinkedDeque<>();
@@ -235,7 +235,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
             retryListener.onResponse(false);
             return;
         }
-        SubscribableListener.<TrainedModelDeploymentTask>newForked(l -> deploymentManager.startDeployment(loadingTask, l))
+        SubscribableListener.<TrainedModelDeploymentTask>newForked(l -> inferenceProcessManger.startDeployment(loadingTask, l))
             .andThen(threadPool.executor(MachineLearning.UTILITY_THREAD_POOL_NAME), threadPool.getThreadContext(), this::handleLoadSuccess)
             .addListener(retryListener.delegateResponse((retryL, ex) -> {
                 var deploymentId = loadingTask.getDeploymentId();
@@ -269,14 +269,14 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
     ) {
         logger.debug(() -> format("[%s] Gracefully stopping deployment due to reason %s", task.getDeploymentId(), reason));
 
-        stopAndNotifyHelper(task, reason, listener, deploymentManager::stopAfterCompletingPendingWork);
+        stopAndNotifyHelper(task, reason, listener, inferenceProcessManger::stopAfterCompletingPendingWork);
     }
 
     public void stopDeploymentAndNotify(TrainedModelDeploymentTask task, String reason, ActionListener<AcknowledgedResponse> listener) {
         logger.debug(() -> format("[%s] Forcefully stopping deployment due to reason %s", task.getDeploymentId(), reason));
 
         stopAndNotifyHelper(task, reason, listener, (t, l) -> {
-            deploymentManager.stopDeployment(t);
+            inferenceProcessManger.stopDeployment(t);
             l.onResponse(AcknowledgedResponse.TRUE);
         });
     }
@@ -327,18 +327,18 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
         boolean chunkResponse,
         ActionListener<InferenceResults> listener
     ) {
-        var processContext = deploymentManager.getProcessContext(task, listener::onFailure);
+        var processContext = inferenceProcessManger.getRunningProcessContext(task, listener::onFailure);
         if (processContext != null) {
             processContext.infer(config, input, skipQueue, timeout, prefixType, parentActionTask, chunkResponse, listener);
         }
     }
 
     public Optional<ModelStats> modelStats(TrainedModelDeploymentTask task) {
-        return deploymentManager.getProcessContext(task).map(DeploymentManager.ProcessContext::getStats);
+        return inferenceProcessManger.getDeployedProcessContext(task).map(InferenceProcessManger.ProcessContext::getStats);
     }
 
     public void clearCache(TrainedModelDeploymentTask task, ActionListener<AcknowledgedResponse> listener) {
-        var processContext = deploymentManager.getProcessContext(task, listener::onFailure);
+        var processContext = inferenceProcessManger.getRunningProcessContext(task, listener::onFailure);
         if (processContext != null) {
             processContext.clearCache(CONTROL_MESSAGE_TIMEOUT, listener);
         }
@@ -610,7 +610,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
 
     private void stopDeploymentAsync(TrainedModelDeploymentTask task, String reason, ActionListener<AcknowledgedResponse> listener) {
         stopDeploymentHelper(task, reason, (t, l) -> {
-            deploymentManager.stopDeployment(t);
+            inferenceProcessManger.stopDeployment(t);
             l.onResponse(AcknowledgedResponse.TRUE);
         }, listener);
     }
@@ -643,7 +643,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
         String reason,
         ActionListener<AcknowledgedResponse> listener
     ) {
-        stopDeploymentHelper(task, reason, deploymentManager::stopAfterCompletingPendingWork, listener);
+        stopDeploymentHelper(task, reason, inferenceProcessManger::stopAfterCompletingPendingWork, listener);
     }
 
     private void updateNumberOfAllocations(TrainedModelAssignmentMetadata assignments) {
@@ -688,7 +688,7 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
                     e
                 )
             );
-            var processContext = deploymentManager.getProcessContext(task, updateListener::onFailure);
+            var processContext = inferenceProcessManger.getRunningProcessContext(task, updateListener::onFailure);
             if (processContext != null) {
                 processContext.updateNumAllocations(
                     assignment.getNodeRoutingTable().get(nodeId).getTargetAllocations(),

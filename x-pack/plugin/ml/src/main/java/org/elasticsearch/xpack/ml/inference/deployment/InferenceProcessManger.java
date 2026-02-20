@@ -75,9 +75,12 @@ import static org.elasticsearch.xpack.core.ClientHelper.ML_ORIGIN;
 import static org.elasticsearch.xpack.core.ClientHelper.executeAsyncWithOrigin;
 import static org.elasticsearch.xpack.ml.MachineLearning.UTILITY_THREAD_POOL_NAME;
 
-public class DeploymentManager {
+/**
+ * Manages the lifecycle of inference processes.
+ */
+public class InferenceProcessManger {
 
-    private static final Logger logger = LogManager.getLogger(DeploymentManager.class);
+    private static final Logger logger = LogManager.getLogger(InferenceProcessManger.class);
     private static final AtomicLong requestIdCounter = new AtomicLong(1);
     public static final int NUM_RESTART_ATTEMPTS = 3;
     private static final TimeValue WORKER_QUEUE_COMPLETION_TIMEOUT = TimeValue.timeValueMinutes(5);
@@ -92,7 +95,7 @@ public class DeploymentManager {
     private final ConcurrentMap<Long, ProcessContext> processContextByAllocation = new ConcurrentHashMap<>();
     private final int maxProcesses;
 
-    public DeploymentManager(
+    public InferenceProcessManger(
         Client client,
         NamedXContentRegistry xContentRegistry,
         ThreadPool threadPool,
@@ -110,7 +113,7 @@ public class DeploymentManager {
         this.maxProcesses = maxProcesses;
     }
 
-    public Optional<ProcessContext> getProcessContext(TrainedModelDeploymentTask task) {
+    public Optional<ProcessContext> getDeployedProcessContext(TrainedModelDeploymentTask task) {
         return Optional.ofNullable(processContextByAllocation.get(task.getId()));
     }
 
@@ -243,7 +246,7 @@ public class DeploymentManager {
         );
     }
 
-    void verifyMlNodesAndModelArchitectures(
+    private void verifyMlNodesAndModelArchitectures(
         TrainedModelConfig configToReturn,
         Client client,
         ThreadPool threadPool,
@@ -265,7 +268,7 @@ public class DeploymentManager {
         callVerifyMlNodesAndModelArchitectures(configToReturn, verifyConfigListener, client, threadPool);
     }
 
-    void callVerifyMlNodesAndModelArchitectures(
+    private void callVerifyMlNodesAndModelArchitectures(
         TrainedModelConfig configToReturn,
         ActionListener<TrainedModelConfig> configToReturnListener,
         Client client,
@@ -287,7 +290,7 @@ public class DeploymentManager {
             .request();
     }
 
-    Vocabulary parseVocabularyDocLeniently(SearchHit hit) throws IOException {
+    private Vocabulary parseVocabularyDocLeniently(SearchHit hit) throws IOException {
         try (
             XContentParser parser = XContentHelper.createParserNotCompressed(
                 LoggingDeprecationHandler.XCONTENT_PARSER_CONFIG.withRegistry(xContentRegistry),
@@ -326,7 +329,7 @@ public class DeploymentManager {
         }
     }
 
-    public ProcessContext getProcessContext(TrainedModelDeploymentTask task, Consumer<Exception> errorConsumer) {
+    public ProcessContext getRunningProcessContext(TrainedModelDeploymentTask task, Consumer<Exception> errorConsumer) {
         if (task.isStopped()) {
             errorConsumer.accept(
                 ExceptionsHelper.conflictStatusException(

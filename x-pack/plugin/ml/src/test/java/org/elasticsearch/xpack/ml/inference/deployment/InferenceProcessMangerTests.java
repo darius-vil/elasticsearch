@@ -31,7 +31,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class DeploymentManagerTests extends ESTestCase {
+public class InferenceProcessMangerTests extends ESTestCase {
 
     private ThreadPool tp;
     private InferenceAuditor inferenceAuditor;
@@ -76,7 +76,7 @@ public class DeploymentManagerTests extends ESTestCase {
         when(params.getQueueCapacity()).thenReturn(10);
         when(task.getParams()).thenReturn(params);
 
-        DeploymentManager deploymentManager = new DeploymentManager(
+        InferenceProcessManger inferenceProcessManger = new InferenceProcessManger(
             mock(Client.class),
             mock(NamedXContentRegistry.class),
             tp,
@@ -85,10 +85,10 @@ public class DeploymentManagerTests extends ESTestCase {
             inferenceAuditor
         );
 
-        DeploymentManager.ProcessContext context = deploymentManager.new ProcessContext(task, null);
+        InferenceProcessManger.ProcessContext context = inferenceProcessManger.new ProcessContext(task, null);
         context.getPriorityProcessWorker().shutdown();
 
-        deploymentManager.addProcessContext(taskId, context);
+        inferenceProcessManger.addProcessContext(taskId, context);
         context.infer(
             mock(InferenceConfig.class),
             NlpInferenceInput.fromText("foo"),
