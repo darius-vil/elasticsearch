@@ -833,6 +833,9 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
         loadQueuedModels(trainedModelAssignmentNodeService, true);
         loadQueuedModels(trainedModelAssignmentNodeService, false);
 
+        DeploymentManager.ProcessContext mockProcessContext = mock(DeploymentManager.ProcessContext.class);
+        when(deploymentManager.getProcessContext(any(TrainedModelDeploymentTask.class), any())).thenReturn(mockProcessContext);
+
         ClusterChangedEvent event = new ClusterChangedEvent(
             "shouldUpdateAllocations",
             ClusterState.builder(new ClusterName("shouldUpdateAllocations"))
@@ -865,12 +868,12 @@ public class TrainedModelAssignmentNodeServiceTests extends ESTestCase {
 
         assertBusy(() -> {
             ArgumentCaptor<TrainedModelDeploymentTask> updatedTasks = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
-            ArgumentCaptor<Integer> updatedAllocations = ArgumentCaptor.forClass(Integer.class);
-            verify(deploymentManager, times(2)).updateNumAllocations(updatedTasks.capture(), updatedAllocations.capture(), any(), any());
+            verify(deploymentManager, times(2)).getProcessContext(updatedTasks.capture(), any());
             assertThat(updatedTasks.getAllValues().get(0).getModelId(), equalTo(modelOne));
             assertThat(updatedTasks.getAllValues().get(0).getDeploymentId(), equalTo(deploymentOne));
             assertThat(updatedTasks.getAllValues().get(1).getModelId(), equalTo(modelTwo));
             assertThat(updatedTasks.getAllValues().get(1).getDeploymentId(), equalTo(deploymentTwo));
+            verify(mockProcessContext, times(2)).updateNumAllocations(any(Integer.class), any(), any());
         });
         ArgumentCaptor<TrainedModelDeploymentTask> startTaskCapture = ArgumentCaptor.forClass(TrainedModelDeploymentTask.class);
         ArgumentCaptor<UpdateTrainedModelAssignmentRoutingInfoAction.Request> updateCapture = ArgumentCaptor.forClass(

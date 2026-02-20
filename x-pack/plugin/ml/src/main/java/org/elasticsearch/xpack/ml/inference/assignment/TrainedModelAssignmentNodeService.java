@@ -51,6 +51,7 @@ import org.elasticsearch.xpack.ml.inference.deployment.DeploymentManager;
 import org.elasticsearch.xpack.ml.inference.deployment.ModelStats;
 import org.elasticsearch.xpack.ml.inference.deployment.NlpInferenceInput;
 import org.elasticsearch.xpack.ml.inference.deployment.TrainedModelDeploymentTask;
+import org.elasticsearch.xpack.ml.inference.pytorch.results.ThreadSettings;
 import org.elasticsearch.xpack.ml.task.AbstractJobPersistentTasksExecutor;
 
 import java.util.ArrayList;
@@ -326,15 +327,21 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
         boolean chunkResponse,
         ActionListener<InferenceResults> listener
     ) {
-        deploymentManager.infer(task, config, input, skipQueue, timeout, prefixType, parentActionTask, chunkResponse, listener);
+        var processContext = deploymentManager.getProcessContext(task, listener::onFailure);
+        if (processContext != null) {
+            processContext.infer(config, input, skipQueue, timeout, prefixType, parentActionTask, chunkResponse, listener);
+        }
     }
 
     public Optional<ModelStats> modelStats(TrainedModelDeploymentTask task) {
-        return deploymentManager.getStats(task);
+        return deploymentManager.getProcessContext(task).map(DeploymentManager.ProcessContext::getStats);
     }
 
     public void clearCache(TrainedModelDeploymentTask task, ActionListener<AcknowledgedResponse> listener) {
-        deploymentManager.clearCache(task, CONTROL_MESSAGE_TIMEOUT, listener);
+        var processContext = deploymentManager.getProcessContext(task, listener::onFailure);
+        if (processContext != null) {
+            processContext.clearCache(CONTROL_MESSAGE_TIMEOUT, listener);
+        }
     }
 
     private TaskAwareRequest taskAwareRequest(StartTrainedModelDeploymentAction.TaskParams params) {
@@ -659,33 +666,36 @@ public class TrainedModelAssignmentNodeService implements ClusterStateListener {
                 continue;
             }
             RoutingInfo routingInfo = assignment.getNodeRoutingTable().get(nodeId);
-            deploymentManager.updateNumAllocations(
-                task,
-                assignment.getNodeRoutingTable().get(nodeId).getTargetAllocations(),
-                CONTROL_MESSAGE_TIMEOUT,
-                ActionListener.wrap(threadSettings -> {
-                    logger.debug(
-                        "[{}] Updated number of allocations to [{}]",
+            ActionListener<ThreadSettings> updateListener = ActionListener.wrap(threadSettings -> {
+                logger.debug(
+                    "[{}] Updated number of allocations to [{}]",
+                    assignment.getDeploymentId(),
+                    threadSettings.numAllocations()
+                );
+                task.updateNumberOfAllocations(threadSettings.numAllocations());
+                updateStoredState(
+                    assignment.getDeploymentId(),
+                    RoutingInfoUpdate.updateNumberOfAllocations(threadSettings.numAllocations()),
+                    ActionListener.noop()
+                );
+            },
+                e -> logger.error(
+                    format(
+                        "[%s] Could not update number of allocations to [%s]",
                         assignment.getDeploymentId(),
-                        threadSettings.numAllocations()
-                    );
-                    task.updateNumberOfAllocations(threadSettings.numAllocations());
-                    updateStoredState(
-                        assignment.getDeploymentId(),
-                        RoutingInfoUpdate.updateNumberOfAllocations(threadSettings.numAllocations()),
-                        ActionListener.noop()
-                    );
-                },
-                    e -> logger.error(
-                        format(
-                            "[%s] Could not update number of allocations to [%s]",
-                            assignment.getDeploymentId(),
-                            routingInfo.getTargetAllocations()
-                        ),
-                        e
-                    )
+                        routingInfo.getTargetAllocations()
+                    ),
+                    e
                 )
             );
+            var processContext = deploymentManager.getProcessContext(task, updateListener::onFailure);
+            if (processContext != null) {
+                processContext.updateNumAllocations(
+                    assignment.getNodeRoutingTable().get(nodeId).getTargetAllocations(),
+                    CONTROL_MESSAGE_TIMEOUT,
+                    updateListener
+                );
+            }
         }
     }
 

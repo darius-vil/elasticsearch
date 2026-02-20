@@ -110,29 +110,8 @@ public class DeploymentManager {
         this.maxProcesses = maxProcesses;
     }
 
-    public Optional<ModelStats> getStats(TrainedModelDeploymentTask task) {
-        return Optional.ofNullable(processContextByAllocation.get(task.getId())).map(processContext -> {
-            var stats = processContext.getResultProcessor().getResultStats();
-            var recentStats = stats.recentStats();
-            return new ModelStats(
-                processContext.startTime,
-                stats.timingStats().getCount(),
-                stats.timingStats().getAverage(),
-                stats.timingStatsExcludingCacheHits().getAverage(),
-                stats.lastUsed(),
-                processContext.priorityProcessWorker.queueSize() + stats.numberOfPendingResults(),
-                stats.errorCount(),
-                stats.cacheHitCount(),
-                processContext.rejectedExecutionCount.intValue(),
-                processContext.timeoutCount.intValue(),
-                processContext.numThreadsPerAllocation,
-                processContext.numAllocations,
-                stats.peakThroughput(),
-                recentStats.requestsProcessed(),
-                recentStats.avgInferenceTime(),
-                recentStats.cacheHitCount()
-            );
-        });
+    public Optional<ProcessContext> getProcessContext(TrainedModelDeploymentTask task) {
+        return Optional.ofNullable(processContextByAllocation.get(task.getId()));
     }
 
     // function exposed for testing
@@ -347,107 +326,7 @@ public class DeploymentManager {
         }
     }
 
-    public void infer(
-        TrainedModelDeploymentTask task,
-        InferenceConfig config,
-        NlpInferenceInput input,
-        boolean skipQueue,
-        TimeValue timeout,
-        TrainedModelPrefixStrings.PrefixType prefixType,
-        CancellableTask parentActionTask,
-        boolean chunkResponse,
-        ActionListener<InferenceResults> listener
-    ) {
-        var processContext = getProcessContext(task, listener::onFailure);
-        if (processContext == null) {
-            // error reporting handled in the call to getProcessContext
-            return;
-        }
-
-        final long requestId = requestIdCounter.getAndIncrement();
-        InferencePyTorchAction inferenceAction = new InferencePyTorchAction(
-            task.getDeploymentId(),
-            requestId,
-            timeout,
-            processContext,
-            config,
-            input,
-            prefixType,
-            threadPool,
-            parentActionTask,
-            chunkResponse,
-            listener
-        );
-
-        PriorityProcessWorkerExecutorService.RequestPriority priority = skipQueue
-            ? PriorityProcessWorkerExecutorService.RequestPriority.HIGH
-            : PriorityProcessWorkerExecutorService.RequestPriority.NORMAL;
-
-        executePyTorchAction(processContext, priority, inferenceAction);
-    }
-
-    public void updateNumAllocations(
-        TrainedModelDeploymentTask task,
-        int numAllocationThreads,
-        TimeValue timeout,
-        ActionListener<ThreadSettings> listener
-    ) {
-        var processContext = getProcessContext(task, listener::onFailure);
-        if (processContext == null) {
-            // error reporting handled in the call to getProcessContext
-            return;
-        }
-
-        final long requestId = requestIdCounter.getAndIncrement();
-        ThreadSettingsControlMessagePytorchAction controlMessageAction = new ThreadSettingsControlMessagePytorchAction(
-            task.getDeploymentId(),
-            requestId,
-            numAllocationThreads,
-            timeout,
-            processContext,
-            threadPool,
-            listener
-        );
-
-        executePyTorchAction(processContext, PriorityProcessWorkerExecutorService.RequestPriority.HIGHEST, controlMessageAction);
-    }
-
-    public void clearCache(TrainedModelDeploymentTask task, TimeValue timeout, ActionListener<AcknowledgedResponse> listener) {
-        var processContext = getProcessContext(task, listener::onFailure);
-        if (processContext == null) {
-            // error reporting handled in the call to getProcessContext
-            return;
-        }
-
-        final long requestId = requestIdCounter.getAndIncrement();
-        ClearCacheControlMessagePytorchAction controlMessageAction = new ClearCacheControlMessagePytorchAction(
-            task.getDeploymentId(),
-            requestId,
-            timeout,
-            processContext,
-            threadPool,
-            listener.delegateFailureAndWrap((l, b) -> l.onResponse(AcknowledgedResponse.TRUE))
-        );
-
-        executePyTorchAction(processContext, PriorityProcessWorkerExecutorService.RequestPriority.HIGHEST, controlMessageAction);
-    }
-
-    void executePyTorchAction(
-        ProcessContext processContext,
-        PriorityProcessWorkerExecutorService.RequestPriority priority,
-        AbstractPyTorchAction<?> action
-    ) {
-        try {
-            processContext.getPriorityProcessWorker().executeWithPriority(action, priority, action.getRequestId());
-        } catch (EsRejectedExecutionException e) {
-            processContext.getRejectedExecutionCount().incrementAndGet();
-            action.onFailure(e);
-        } catch (Exception e) {
-            action.onFailure(e);
-        }
-    }
-
-    private ProcessContext getProcessContext(TrainedModelDeploymentTask task, Consumer<Exception> errorConsumer) {
+    public ProcessContext getProcessContext(TrainedModelDeploymentTask task, Consumer<Exception> errorConsumer) {
         if (task.isStopped()) {
             errorConsumer.accept(
                 ExceptionsHelper.conflictStatusException(
@@ -468,7 +347,7 @@ public class DeploymentManager {
         return processContext;
     }
 
-    class ProcessContext {
+    public class ProcessContext {
 
         private static final String PROCESS_NAME = "inference process";
         private static final TimeValue COMPLETION_TIMEOUT = TimeValue.timeValueMinutes(3);
@@ -755,6 +634,101 @@ public class DeploymentManager {
                     new IllegalStateException("unsupported trained model location [" + modelLocation.getClass().getSimpleName() + "]")
                 );
             }
+        }
+
+        public void infer(
+            InferenceConfig config,
+            NlpInferenceInput input,
+            boolean skipQueue,
+            TimeValue timeout,
+            TrainedModelPrefixStrings.PrefixType prefixType,
+            CancellableTask parentActionTask,
+            boolean chunkResponse,
+            ActionListener<InferenceResults> listener
+        ) {
+            final long requestId = requestIdCounter.getAndIncrement();
+            InferencePyTorchAction inferenceAction = new InferencePyTorchAction(
+                task.getDeploymentId(),
+                requestId,
+                timeout,
+                this, // TODO remove this
+                config,
+                input,
+                prefixType,
+                threadPool,
+                parentActionTask,
+                chunkResponse,
+                listener
+            );
+
+            PriorityProcessWorkerExecutorService.RequestPriority priority = skipQueue
+                ? PriorityProcessWorkerExecutorService.RequestPriority.HIGH
+                : PriorityProcessWorkerExecutorService.RequestPriority.NORMAL;
+
+            executePyTorchAction(priority, inferenceAction);
+        }
+
+        public void updateNumAllocations(int numAllocationThreads, TimeValue timeout, ActionListener<ThreadSettings> listener) {
+            final long requestId = requestIdCounter.getAndIncrement();
+            ThreadSettingsControlMessagePytorchAction controlMessageAction = new ThreadSettingsControlMessagePytorchAction(
+                task.getDeploymentId(),
+                requestId,
+                numAllocationThreads,
+                timeout,
+                this,
+                threadPool,
+                listener
+            );
+
+            executePyTorchAction(PriorityProcessWorkerExecutorService.RequestPriority.HIGHEST, controlMessageAction);
+        }
+
+        public void clearCache(TimeValue timeout, ActionListener<AcknowledgedResponse> listener) {
+            final long requestId = requestIdCounter.getAndIncrement();
+            ClearCacheControlMessagePytorchAction controlMessageAction = new ClearCacheControlMessagePytorchAction(
+                task.getDeploymentId(),
+                requestId,
+                timeout,
+                this,
+                threadPool,
+                listener.delegateFailureAndWrap((l, b) -> l.onResponse(AcknowledgedResponse.TRUE))
+            );
+
+            executePyTorchAction(PriorityProcessWorkerExecutorService.RequestPriority.HIGHEST, controlMessageAction);
+        }
+
+        void executePyTorchAction(PriorityProcessWorkerExecutorService.RequestPriority priority, AbstractPyTorchAction<?> action) {
+            try {
+                priorityProcessWorker.executeWithPriority(action, priority, action.getRequestId());
+            } catch (EsRejectedExecutionException e) {
+                rejectedExecutionCount.incrementAndGet();
+                action.onFailure(e);
+            } catch (Exception e) {
+                action.onFailure(e);
+            }
+        }
+
+        public ModelStats getStats() {
+            var stats = resultProcessor.getResultStats();
+            var recentStats = stats.recentStats();
+            return new ModelStats(
+                startTime,
+                stats.timingStats().getCount(),
+                stats.timingStats().getAverage(),
+                stats.timingStatsExcludingCacheHits().getAverage(),
+                stats.lastUsed(),
+                priorityProcessWorker.queueSize() + stats.numberOfPendingResults(),
+                stats.errorCount(),
+                stats.cacheHitCount(),
+                rejectedExecutionCount.intValue(),
+                timeoutCount.intValue(),
+                numThreadsPerAllocation,
+                numAllocations,
+                stats.peakThroughput(),
+                recentStats.requestsProcessed(),
+                recentStats.avgInferenceTime(),
+                recentStats.cacheHitCount()
+            );
         }
 
         // accessor used for mocking in tests
