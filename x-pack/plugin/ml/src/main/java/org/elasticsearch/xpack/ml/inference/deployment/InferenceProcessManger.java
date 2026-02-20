@@ -371,7 +371,7 @@ public class InferenceProcessManger {
         private volatile Integer numAllocations;
         private volatile boolean isStopped;
 
-        ProcessContext(TrainedModelDeploymentTask task, Integer startsCount) {
+        public ProcessContext(TrainedModelDeploymentTask task, Integer startsCount) {
             this.task = Objects.requireNonNull(task);
             resultProcessor = new PyTorchResultProcessor(task.getDeploymentId(), threadSettings -> {
                 this.numThreadsPerAllocation = threadSettings.numThreadsPerAllocation();
@@ -395,7 +395,7 @@ public class InferenceProcessManger {
             return resultProcessor;
         }
 
-        synchronized void startAndLoad(TrainedModelLocation modelLocation, ActionListener<Boolean> loadedListener) {
+        private synchronized void startAndLoad(TrainedModelLocation modelLocation, ActionListener<Boolean> loadedListener) {
             assert Thread.currentThread().getName().contains(UTILITY_THREAD_POOL_NAME)
                 : format("Must execute from [%s] but thread is [%s]", UTILITY_THREAD_POOL_NAME, Thread.currentThread().getName());
 
@@ -507,11 +507,11 @@ public class InferenceProcessManger {
             task.setFailed("inference process crashed due to reason [" + reason + "]");
         }
 
-        void startPriorityProcessWorker() {
+        private void startPriorityProcessWorker() {
             executorServiceForProcess.submit(priorityProcessWorker::start);
         }
 
-        synchronized void forcefullyStopProcess() {
+        private synchronized void forcefullyStopProcess() {
             logger.debug(() -> format("[%s] Forcefully stopping process", task.getDeploymentId()));
             prepareInternalStateForShutdown();
 
@@ -614,7 +614,7 @@ public class InferenceProcessManger {
             }
         }
 
-        void loadModel(TrainedModelLocation modelLocation, ActionListener<Boolean> listener) {
+        private void loadModel(TrainedModelLocation modelLocation, ActionListener<Boolean> listener) {
             if (isStopped) {
                 listener.onFailure(new IllegalArgumentException("Process has stopped, model loading canceled"));
                 return;
@@ -700,7 +700,7 @@ public class InferenceProcessManger {
             executePyTorchAction(PriorityProcessWorkerExecutorService.RequestPriority.HIGHEST, controlMessageAction);
         }
 
-        void executePyTorchAction(PriorityProcessWorkerExecutorService.RequestPriority priority, AbstractPyTorchAction<?> action) {
+        private void executePyTorchAction(PriorityProcessWorkerExecutorService.RequestPriority priority, AbstractPyTorchAction<?> action) {
             try {
                 priorityProcessWorker.executeWithPriority(action, priority, action.getRequestId());
             } catch (EsRejectedExecutionException e) {
