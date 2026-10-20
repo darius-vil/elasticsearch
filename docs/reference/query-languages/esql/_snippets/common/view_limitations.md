@@ -78,6 +78,17 @@ Other settings from the calling query that control the query execution context, 
 Query parameters are not allowed in the view definition, and therefore query
 parameters in the main query will never impact the view results.
 
+#### Time series data in views
+
+```{applies_to}
+stack: ga 9.6
+serverless: ga
+```
+
+A view that starts with [`TS`](/reference/query-languages/esql/commands/ts.md)
+must also contain a `STATS` command after it. A view without `STATS` is
+rejected when you create or update it. This ensures the view returns plain
+tabular results. A `PROMQL` view must also use an aggregation function.
 #### Validation and dependencies
 
 When you create or update a view, Elasticsearch validates its name, size, and query syntax. It doesn't check whether referenced indices, fields, datasets, or views exist, or whether nested views form a cycle. This allows you to create resources in any order. Elasticsearch reports dependency problems when you query the view.
